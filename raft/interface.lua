@@ -1,6 +1,7 @@
 struct = {
     name = "messageStruct",
     fields = {
+      {name = "timeout", type = "int"},
       {name = "node", type = "int"},
       {name = "type", type = "double"},
       {name = "value", type = "string"}
@@ -10,6 +11,12 @@ struct = {
   interface = {
    name = "minhaInt",
    methods = {
+     StartTest1 ={
+       resulttype = "void",
+       args = {
+         {direction = "in", type = "int"}
+       }
+     }
      SendMessage = {
        resulttype = "string",
        args = {

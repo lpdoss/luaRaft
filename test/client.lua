@@ -16,8 +16,8 @@ local p2 = luarpc.createProxy(IP, porta2, arq_interface)
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 1 server
 if test == 0 then -- server makes simple call like in our first RPC version
-  local r, s = p1.foo(3, "alo", {nome = "ana", idade = 20, peso = 57.0}, 2)
-  print("\n RES p1.foo1 = ",r, s, "\n")
+  local p1 = luarpc.createProxy(IP, porta1, arq_interface)
+  p1.StartTest1(porta2)
 
 elseif test == 1 then -- server calls itself
   local r = p1.call_yourself(3, 7)
