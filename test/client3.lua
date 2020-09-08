@@ -17,7 +17,7 @@ local IP = "127.0.0.1"
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 1 server
 if test == 0 then -- server makes simple call like in our first RPC version
   local p1 = luarpc.createProxy(IP, porta1, arq_interface)
-  p1.StartTest1(porta2)
+  p1.InitializeNode(5)
 
 elseif test == 1 then -- server calls itself
   local r = p1.call_yourself(3, 7)

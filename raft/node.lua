@@ -23,8 +23,21 @@ local receivedMessagesLine = {}
 local sentMessagesLine = {}   
 local messageTypes = 
 {
-  SuspendNode = SuspendNodeAction,
-  SuspendNodeResp = SuspendNodeRespAction
+  SuspendNode = function(proxy, message)
+    suspendNodeFlag = true
+    -- Send back timeout for the sender to know when the message was expected to timeout
+    respMessage = { timeout=message.timeout, node = port, type = "SuspendNodeResp", value = "ok"}
+    resp = proxy.SendMessage(respMessage)
+    if (resp ~= "Message Received") then
+      print("Couldn`t send message ", respMessage)
+    end
+  end,
+  SuspendNodeResp = function(proxy, message)
+    print("Node " .. message.node .. " was successfully suspended.")
+    if sentMessagesLine[message.timeout] ~= nil then
+      table.remove(sentMessagesLine[message.timeout], message)
+    end
+  end
 }
 
 -- create local methods implementation
@@ -54,29 +67,17 @@ end
     Each valid message type has a related message action that is triggered when the message is received.
 ]]--
 local function processMessage(message)
-  nodeProxy = clusterNodesProxies[message.node]
-  messageAction = messageTypes[message.type]
-  if (messageAction ~= nil) then
-    messageAction(nodeProxy, message)
-  end  
-end
--- Set the suspend flag to true and send the SuspendNodeResp to the original node
-local function SuspendNodeAction(proxy, message)
-    suspendNodeFlag = true
-    -- Send back timeout for the sender to know when the message was expected to timeout
-    respMessage = { timeout=message.timeout, node = port, type = "SuspendNodeResp", value = "ok"}
-    resp = proxy.SendMessage(respMessage)
-    if (resp ~= "Message Received") then
-      print ("Couldn`t send message ", respMessage)
-    end
-end
--- Acknowledge the conclusion of the suspension
-local function SuspendNodeRespAction(proxy, message)
-  print ("Node " .. message.node .. " was successfully suspended.")
-  if sentMessagesLine[message.timeout] ~= nil then
-    table.remove(sentMessagesLine[message.timeout], message)
+  print("[NODE " .. port ..  "] Processing message")
+  for k,v in pairs(message) do
+    print(k,v)
   end
+  local nodeProxy = clusterNodesProxies[message.node]
+  if (messageTypes[message.type] ~= nil) then
+    messageTypes[message.type](nodeProxy, message)
+  end  
+  print("[NODE " .. port ..  "] Processed message")
 end
+
 
 -- Create the node methods implementation 
 local nodeImpl = {
@@ -88,18 +89,22 @@ local nodeImpl = {
     end
     print ("Beginning test 1")
     messageTimeout = tick + 5
-    message = { timeout=messageTimeout, node=node, type="SuspendNode", value="" }
+    message = { timeout=messageTimeout, node=port, type="SuspendNode", value="" }
     local resp = proxy.SendMessage(message)
+    print ("[NODE " .. port .. "] Return message: " .. resp)
     if (resp ~= "Message Received") then
       print ("Couldn`t send message " .. message.type .. " to node " .. message.node)
       return 
     end
     addSentMessage(message)
     print("Sent suspend message")
-  end
+  end,
   -- 
   SendMessage = function (messageStruct)
-    print("Message received: ", messageStruct)
+    print("[NODE " .. port .. "] Message received:")
+    for k,v in pairs(messageStruct) do
+      print("[NODE " .. port .. "] " .. k .. ": " .. v .. ".")
+    end
     local nodeProxy = clusterNodesProxies[messageStruct.node]
     if (nodeProxy == nil) then
       return "Calling node is not in the cluster."
@@ -114,35 +119,38 @@ local nodeImpl = {
   --
   InitializeNode = function (cycleTimeout)
     -- reinitialize node properties
+    print("[NODE " .. port .. "] Initializing node ")
     tick = 0
     suspendNodeFlag = false
     clusterNodesProxies = {}
+    print("[NODE " .. port .. "] Initialized node ")
     -- create proxies to other nodes
-    for _,node in clusterNodes do
-        clusterNodesProxies[node] = luarpc.CreateProxy(IP, node, arq_interface))
+    print("[NODE " .. port ..  "] Creating clusters")
+    for _,node in ipairs(clusterNodes) do
+        clusterNodesProxies[node] = luarpc.createProxy(IP, node, arq_interface)
     end
+    print("[NODE " .. port ..  "] Created clusters")
     --
     while true do
-      print("Executing node ", node, " cycle ", tick)
+      print("[NODE " .. port ..  "] Executing cycle " .. tick)
       -- Check if there are any received messages to be treated
       while #receivedMessagesLine > 0 do
-        print("Processing message: ", messageStruct)
         processMessage(receivedMessagesLine[1])
         table.remove(receivedMessagesLine, 1)
-        print("Processed message: ", messageStruct)
       end
       -- Check if there are any sent messages waiting a returning call
       if #sentMessagesLine > 0 and sentMessagesLine[tick] ~= nil  then
-        for _, message in sentMessagesLine[tick] do
-          print("Timeout reached for node " .. message.node .. ", message " .. message.type)
+        for _, message in ipairs(sentMessagesLine[tick]) do
+          print("[NODE" .. port .. "] Timeout reached for node " .. message.node .. ", message " .. message.type)
         end
       end
       -- Increment server clock
-      luarpc.wait(cycleTimeout)
-      tick += 1
       if suspendNodeFlag then break end
+      print("[NODE " .. port ..  "] Finished executing cycle " .. tick)
+      luarpc.wait(cycleTimeout)
+      tick = tick + 1
     end
-    print("Node ", node, " lifecycle suspendend")
+    print("[NODE ", port, "] lifecycle suspendend")
   end
 }
 

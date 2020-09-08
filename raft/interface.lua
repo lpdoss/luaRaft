@@ -3,7 +3,7 @@ struct = {
     fields = {
       {name = "timeout", type = "int"},
       {name = "node", type = "int"},
-      {name = "type", type = "double"},
+      {name = "type", type = "string"},
       {name = "value", type = "string"}
     }
   }
@@ -16,11 +16,17 @@ struct = {
        args = {
          {direction = "in", type = "int"}
        }
-     }
+     },
      SendMessage = {
        resulttype = "string",
        args = {
          {direction = "in", type = "messageStruct"}
+       }
+     },
+     InitializeNode = {
+       resulttype = "void",
+       args = {
+         {direction = "in", type = "int"}
        }
      },
      complex_foo = {

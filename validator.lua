@@ -63,38 +63,43 @@ function VALIDATOR.validate_client(params,fname,iface_args)
         else
           params[i] = tostring(params[i])
         end
-      elseif inputs[i] == "minhaStruct" then -- table case
+      elseif inputs[i] == "messageStruct" then -- table case
         local reason = ""
         if type(params[i]) ~= "table" then
           reason = string.format("#%i arg of method '%s' must be a table and not %s",i,fname,type(params[i]))
         else
           for k,_ in pairs(params[i]) do
-            if k ~= "nome" and k ~= "peso" and k ~= "idade" then
+            if k ~= "timeout" and k ~= "node" and k ~= "type" and k~="value" then
               reason = reason .. string.format("\n\t  #%i arg of method '%s' contains invalid keys! minhaStruct table does not support '%s' key",i,fname,k)
             end
           end
 
-          if type(params[i].nome) ~= swagger_struct.nome then
-            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'nome' of type string and not %s",i,fname,type(params[i].nome))
-          end
-
-          if tonumber(params[i].peso) == nil then
-            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'peso' of type double. Can't convert '%s' to number",i,fname,params[i].peso)
+          if tonumber(params[i].timeout) == nil then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'timeout' of type int. Can't convert '%s' to number",i,fname,params[i].timeout)
           else
-            params[i].peso = tonumber(params[i].peso)
-            if math.type(params[i].peso) ~= swagger_struct.peso then
-              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'peso' of type double and not %s",i,fname,type(params[i].peso))
+            params[i].timeout = tonumber(params[i].timeout)
+            if math.type(params[i].timeout) ~= swagger_struct.timeout then
+              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'timeout' of type int and not %s",i,fname,type(params[i].timeout))
             end
           end
 
-          if tonumber(params[i].idade) == nil then
-            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'idade' of type int. Can't convert '%s' to number",i,fname,params[i].idade)
+          if tonumber(params[i].node) == nil then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'node' of type int. Can't convert '%s' to number",i,fname,params[i].node)
           else
-            params[i].idade = tonumber(params[i].idade)
-            if math.type(params[i].idade) ~= swagger_struct.idade then
-              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'idade' of type int and not %s",i,fname,type(params[i].idade))
+            params[i].node = tonumber(params[i].node)
+            if math.type(params[i].node) ~= swagger_struct.node then
+              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'node' of type int and not %s",i,fname,type(params[i].node))
             end
           end
+
+          if type(params[i].type) ~= swagger_struct.type then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'type' of type string and not %s",i,fname,type(params[i].type))
+          end
+
+          if type(params[i].value) ~= swagger_struct.value then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'value' of type string and not %s",i,fname,type(params[i].value))
+          end
+
         end
         if #reason > 0 then
           -- print("[ERROR] Invalid request! " .. reason)
