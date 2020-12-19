@@ -69,7 +69,7 @@ function VALIDATOR.validate_client(params,fname,iface_args)
           reason = string.format("#%i arg of method '%s' must be a table and not %s",i,fname,type(params[i]))
         else
           for k,_ in pairs(params[i]) do
-            if k ~= "timeout" and k ~= "node" and k ~= "type" and k~="value" then
+            if k ~= "timeout" and k ~= "fromNode" and k ~= "toNode" and k ~= "type" and k~="value" then
               reason = reason .. string.format("\n\t  #%i arg of method '%s' contains invalid keys! minhaStruct table does not support '%s' key",i,fname,k)
             end
           end
@@ -83,12 +83,20 @@ function VALIDATOR.validate_client(params,fname,iface_args)
             end
           end
 
-          if tonumber(params[i].node) == nil then
-            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'node' of type int. Can't convert '%s' to number",i,fname,params[i].node)
+          if tonumber(params[i].fromNode) == nil then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'fromNode' of type int. Can't convert '%s' to number",i,fname,params[i].node)
           else
-            params[i].node = tonumber(params[i].node)
-            if math.type(params[i].node) ~= swagger_struct.node then
-              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'node' of type int and not %s",i,fname,type(params[i].node))
+            params[i].fromNode = tonumber(params[i].fromNode)
+            if math.type(params[i].fromNode) ~= swagger_struct.fromNode then
+              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'fromNode' of type int and not %s",i,fname,type(params[i].node))
+            end
+          end
+          if tonumber(params[i].toNode) == nil then
+            reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'toNode' of type int. Can't convert '%s' to number",i,fname,params[i].node)
+          else
+            params[i].toNode = tonumber(params[i].toNode)
+            if math.type(params[i].toNode) ~= swagger_struct.toNode then
+              reason = reason .. string.format("\n\t  #%i arg of method '%s' must be a table with 'toNode' of type int and not %s",i,fname,type(params[i].node))
             end
           end
 

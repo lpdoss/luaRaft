@@ -35,7 +35,7 @@ function luarpc.createServant(obj, interface_path, port)
   servants_lst[server]["interface"] = interface_path
 end
 
-function luarpc.createProxy(host, port, interface_path)
+function luarpc.createProxy(host, port, interface_path, verbose)
   local proxy_stub = {}
   dofile(interface_path)
   for fname, fmethod in pairs(interface.methods) do
@@ -49,13 +49,15 @@ function luarpc.createProxy(host, port, interface_path)
       end
 
       local msg = marshall.create_protocol_msg(fname, params)
-
+      
       -- abre nova conexao e envia request
       if coroutine.isyieldable() then -- coroutine-client
         proxy_stub.conn = luarpc.create_client_stub_conn(host, port, true)
         -- print("\n\t     >>> [cli] createProxy CASE 1", "\n") -- [DEBUG]
         local curr_co = coroutine.running()
-        print("\t     >>> CO RUNNING:", curr_co, "\n")
+        if (verbose) then
+          print("\t     >>> CO RUNNING:", curr_co, "\n")
+        end
 
         coroutines_by_socket[proxy_stub.conn] = curr_co -- registra na tabela
         table.insert(sockets_lst, proxy_stub.conn) -- insere no array do select
@@ -71,7 +73,6 @@ function luarpc.createProxy(host, port, interface_path)
         -- print("\n\n\t\t >>>>>> [CLT -> SVR] MSG TO BE SENT 2:",msg) -- [DEBUG]
         proxy_stub.conn:send(msg) -- envia peiddo RPC
       end
-
       -- print("\n\t\t >>>>>> [cli] WAITING TO RECEIVE!!!") -- [DEBUG]
       coroutines_by_socket[proxy_stub.conn] = nil -- desregistra da tabela
 
@@ -80,7 +81,7 @@ function luarpc.createProxy(host, port, interface_path)
       repeat
         ack,err = proxy_stub.conn:receive() -- SERVER IS EXITING HERE
         -- print("[receive loop]: ack,err = ",ack,err) -- [DEBUG]
-        if err then
+        if err and err ~="timeout" then
           print("[ERROR] Unexpected... cause:", err)
           break
         end
@@ -93,15 +94,18 @@ function luarpc.createProxy(host, port, interface_path)
 
       local res = marshall.unmarshalling(returns, interface_path) -- converte string para table com results
       return table.unpack(res) -- retorna results
-
     end --end of function
   end -- end of for
   return proxy_stub
 end
 
-function luarpc.waitIncoming()
-
-  print("Waiting for Incoming...")
+function luarpc.waitIncoming(verbose)
+  if (verbose == nil) then
+    verbose = false
+  end
+  if (verbose) then
+    print("Waiting for Incoming...")
+  end
   while true do
     local nextTimeout = nil
     if #wakeup_times > 0 then
@@ -145,33 +149,47 @@ function luarpc.waitIncoming()
               end
             until msg == "-fim-"
           end)
-
-          print(">>> '[SVR] CO RESUME 1'- START",coroutine.status(co),co,sckt)
+          if (verbose) then
+            print(">>> '[SVR] CO RESUME 1'- START",coroutine.status(co),co,sckt)
+          end
           coroutine.resume(co, client, servant) -- inicia a corotina
-          print(">>> '[SVR] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+          if (verbose) then
+            print(">>> '[SVR] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+          end
 
         else                                                    -- client
             -- para cada cliente ativo... aplicar reumse() em corrotina indicada pela tabela global
             local co = coroutines_by_socket[sckt]
             if co ~= nil and coroutine.status(co) ~= "dead" then
-              print(">>> '[CLT] CO RESUME 1'- START",coroutine.status(co),co,sckt)
+              if (verbose) then
+                print(">>> '[CLT] CO RESUME 1'- START",coroutine.status(co),co,sckt)
+              end
               coroutine.resume(co)
-              print(">>> '[CLT] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+              if (verbose) then
+                print(">>> '[CLT] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+              end
             end
-            if coroutine.status(co) == "dead" then
+            if co == nil or coroutine.status(co) == "dead" then
               luarpc.remove_socket(sckt) -- remove socket cliente do array do select()
             end
         end -- end if
       end -- end for
     elseif err == "timeout" then
-      co = coroutines_by_wakeup[wakeup_times[1]]
-      if co ~= nil then 
-        table.remove(wakeup_times, 1)
-        coroutines_by_wakeup[nextTimeout] = nil
-        if co ~= nil and coroutine.status(co) ~= "dead" then
-          print(">>> '[TIMEOUT] CO RESUME 1'- START",coroutine.status(co),co,sckt)
-          coroutine.resume(co, "timeout")
-          print(">>> '[TIMEOUT] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+      coList = coroutines_by_wakeup[wakeup_times[1]]
+      table.remove(wakeup_times, 1)
+      if coList ~= nil then 
+        while #coList > 0 do
+          co = coList[1]
+          table.remove(coList, 1)
+          if co ~= nil and coroutine.status(co) ~= "dead" then
+            if (verbose) then
+              print(">>> '[TIMEOUT] CO RESUME 1'- START",coroutine.status(co),co,sckt)
+            end
+            coroutine.resume(co, "timeout")
+            if (verbose) then
+              print(">>> '[TIMEOUT] CO RESUME 2'- STOP",coroutine.status(co),co,sckt)
+            end
+          end
         end
       else 
         print(">>> '[TIMEOUT] No coroutine to resume.")
@@ -181,14 +199,25 @@ function luarpc.waitIncoming()
 end
 
 
-function luarpc.wait(timeToWait)
+function luarpc.wait(timeToWait, verbose)
+  if (verbose == nil) then
+    verbose = false
+  end
   wakeup = os.time() + timeToWait
   table.insert(wakeup_times, wakeup)
   
-  coroutines_by_wakeup[wakeup] = coroutine.running()
-  print("\t>>> [WAIT] Begin wait for ", timeToWait, "seconds")
+  if coroutines_by_wakeup[wakeup] == nil then
+    coroutines_by_wakeup[wakeup] = {}
+  end
+  local co = coroutine.running()
+  table.insert(coroutines_by_wakeup[wakeup], co)
+  if (verbose) then
+    print("\t>>> [WAIT] Begin wait for ", timeToWait, "seconds")
+  end
   coroutine.yield()
-  print("\t>>> [WAIT] End wait")
+  if (verbose) then
+    print("\t>>> [WAIT] End wait")
+  end
 end
 
 -------------------------------------------------------------------------------- MARSHALLING/UNMARSHALLING
@@ -218,7 +247,7 @@ function luarpc.create_client_stub_conn(host, port, timeout)
   if timeout ~= false then
     conn:settimeout(0) -- do not block  -- TODO TESTING
   end
-  -- conn:setoption("keepalive", true)
+  --conn:setoption("keepalive", true)
   conn:setoption("reuseaddr", true)
   return conn
 end

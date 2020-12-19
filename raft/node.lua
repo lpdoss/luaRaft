@@ -1,158 +1,136 @@
 package.path = "../?.lua;" .. package.path
 local luarpc = require("luarpc")
+local utils = require("utils")
+local messageTypes = require("messageTypes")
+local nodeProperties = require("nodeProperties")
+local nodeStates = require("nodeStates")
+local generalRules = require("generalRules")
+local logReplicationRules = require("logReplicationRules")
+local leaderElectionRules = require("leaderElectionRules")
 local arq_interface = "interface.lua"
 
--- Initialize default port and empty cluster.
--- Should receive in the arguments the port to listen and the ports of all nodes in the cluster.
-local IP = "127.0.0.1"
-local port = 8000 
-local clusterNodes = {}
-local clusterNodesProxies = {}
+-- Initialize
 for i, value in ipairs(arg) do
-    if i == 1 then
-        port = tonumber(value)
+    if (value == "v" or value == "verbose") then
+      nodeProperties.verbose = true
+    elseif i == 1 then
+        nodeProperties.port = tonumber(value)
     else
-        table.insert(clusterNodes, tonumber(value))
+        table.insert(nodeProperties.clusterNodes, tonumber(value))
     end
 end
-
--- 
-local tick = 0
-local suspendNodeFlag = false
-local receivedMessagesLine = {}   
-local sentMessagesLine = {}   
-local messageTypes = 
-{
-  SuspendNode = function(proxy, message)
-    suspendNodeFlag = true
-    -- Send back timeout for the sender to know when the message was expected to timeout
-    respMessage = { timeout=message.timeout, node = port, type = "SuspendNodeResp", value = "ok"}
-    resp = proxy.SendMessage(respMessage)
-    if (resp ~= "Message Received") then
-      print("Couldn`t send message ", respMessage)
-    end
-  end,
-  SuspendNodeResp = function(proxy, message)
-    print("Node " .. message.node .. " was successfully suspended.")
-    if sentMessagesLine[message.timeout] ~= nil then
-      table.remove(sentMessagesLine[message.timeout], message)
-    end
-  end
-}
-
--- create local methods implementation
-function containsElement(list, element)
-  for _, value in pairs(list) do
-    if value == element then
-      return true
-    end
-  end
-  return false
-end
-
---[[
-   The sentMessagesLine is a table. 
-   The key is the server clock when the messages will timeout.
-   The value is a list of messages that will timeout in the key value.
-]]--
-function addSentMessage(message)
-  if (sentMessagesLine[message.timeout] ~= nil) then
-    table.insert(sentMessagesLine[message.timeout], message)
-  else
-    sentMessagesLine[message.timeout] = { message }
-  end
-end
-
---[[
-    Each valid message type has a related message action that is triggered when the message is received.
-]]--
-local function processMessage(message)
-  print("[NODE " .. port ..  "] Processing message")
-  for k,v in pairs(message) do
-    print(k,v)
-  end
-  local nodeProxy = clusterNodesProxies[message.node]
-  if (messageTypes[message.type] ~= nil) then
-    messageTypes[message.type](nodeProxy, message)
-  end  
-  print("[NODE " .. port ..  "] Processed message")
-end
-
 
 -- Create the node methods implementation 
 local nodeImpl = {
-  StartTest1 = function(node)
-    local proxy = clusterNodesProxies[node]
-    if (proxy == nil) then
-      print("Node " .. node .. " is not in the cluster.")
-      return
+  ApplyEntry = function(entry)
+    if (nodeProperties.verbose) then
+      print("----------Apply Entry - enter----------")
     end
-    print ("Beginning test 1")
-    messageTimeout = tick + 5
-    message = { timeout=messageTimeout, node=port, type="SuspendNode", value="" }
-    local resp = proxy.SendMessage(message)
-    print ("[NODE " .. port .. "] Return message: " .. resp)
-    if (resp ~= "Message Received") then
-      print ("Couldn`t send message " .. message.type .. " to node " .. message.node)
-      return 
+    -- If not leader, redirect to leader
+    if (nodeProperties.state ~= nodeStates.Leader) then
+      -- Must use another proxy to avoid connection being closed
+      local tempProxy = luarpc.createProxy(nodeProperties.IP, nodeProperties.leaderId, arq_interface, nodeProperties.verbose)
+      local r= tempProxy.ApplyEntry(entry)
+      return r
     end
-    addSentMessage(message)
-    print("Sent suspend message")
+    local messageCommitIndex = logReplicationRules.AddEntryToLog(nodeProperties, nodeProperties.term, entry)
+    while (nodeProperties.commitIndex < messageCommitIndex) do 
+      if (nodeProperties.verbose) then
+        print("Node commit index:", nodeProperties.commitIndex)
+        print("Append entry index:", messageCommitIndex)
+      end
+      if (nodeProperties.state ~= nodeStates.Leader) then
+        return "Error: Node lost leadership before commiting entry. try again..."
+      end
+      luarpc.wait(nodeProperties.heartbeatTimeout, nodeProperties.verbose)
+    end
+    if (nodeProperties.verbose) then
+      print("Apply Entry - left")
+    end
+    return "Entry successfully commited"
+  end,
+  StopNode = function()
+    nodeProperties.keepAlive = false
+  end,
+  Snapshot = function()
+    print("[NODE" .. nodeProperties.port .. "] State Snapshot")
+    print("State: ", nodeProperties.state)
+    print("Term: ", nodeProperties.term)
+    print("Leader: ", nodeProperties.leaderId)
+    print("VotedFor: ", nodeProperties.votedFor)
+    print("Last log ID: ", nodeProperties.lastLogIndex)
+    print("Commit ID: ", nodeProperties.commitIndex)
+    if (nodeProperties.state == nodeStates.Leader) then
+      print("Node next ID:")
+      for k,v in pairs(nodeProperties.nodeNextIndex) do
+        print(k, "-", v)
+      end
+      print("Node match ID:")
+      for k,v in pairs(nodeProperties.nodeMatchIndex) do
+        print(k, "-", v)
+      end
+    end
+    print("Log:")
+    for k,v in pairs(nodeProperties.log) do
+      print(k, "- Term:", v.term, "Value:", v.value)
+    end
   end,
   -- 
-  SendMessage = function (messageStruct)
-    print("[NODE " .. port .. "] Message received:")
-    for k,v in pairs(messageStruct) do
-      print("[NODE " .. port .. "] " .. k .. ": " .. v .. ".")
+  ReceiveMessage = function (messageStruct)
+    if (nodeProperties.verbose) then
+      print("[NODE " .. nodeProperties.port .. "] Message received")
     end
-    local nodeProxy = clusterNodesProxies[messageStruct.node]
+    local nodeProxy = nodeProperties.clusterNodesProxies[messageStruct.fromNode]
     if (nodeProxy == nil) then
       return "Calling node is not in the cluster."
     end
 
     if messageTypes[messageStruct.type] ~= nil then
-      table.insert(receivedMessagesLine, messageStruct)
+      table.insert(nodeProperties.receivedMessagesLine, messageStruct)
       return "Message Received"
     end
     return "Invalid Message Type"
   end,
   --
-  InitializeNode = function (cycleTimeout)
-    -- reinitialize node properties
-    print("[NODE " .. port .. "] Initializing node ")
-    tick = 0
-    suspendNodeFlag = false
-    clusterNodesProxies = {}
-    print("[NODE " .. port .. "] Initialized node ")
-    -- create proxies to other nodes
-    print("[NODE " .. port ..  "] Creating clusters")
-    for _,node in ipairs(clusterNodes) do
-        clusterNodesProxies[node] = luarpc.createProxy(IP, node, arq_interface)
-    end
-    print("[NODE " .. port ..  "] Created clusters")
-    --
-    while true do
-      print("[NODE " .. port ..  "] Executing cycle " .. tick)
-      -- Check if there are any received messages to be treated
-      while #receivedMessagesLine > 0 do
-        processMessage(receivedMessagesLine[1])
-        table.remove(receivedMessagesLine, 1)
+  InitializeNode = function ()
+    generalRules.InitializeNodeState(nodeProperties, arq_interface)
+    while nodeProperties.keepAlive do
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Executing cycle " .. nodeProperties.heartbeat .. " as " .. nodeProperties.state)
       end
-      -- Check if there are any sent messages waiting a returning call
-      if #sentMessagesLine > 0 and sentMessagesLine[tick] ~= nil  then
-        for _, message in ipairs(sentMessagesLine[tick]) do
-          print("[NODE" .. port .. "] Timeout reached for node " .. message.node .. ", message " .. message.type)
-        end
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Processing received messages ")
       end
-      -- Increment server clock
-      if suspendNodeFlag then break end
-      print("[NODE " .. port ..  "] Finished executing cycle " .. tick)
-      luarpc.wait(cycleTimeout)
-      tick = tick + 1
+      utils.ProcessReceivedMessages(nodeProperties, messageTypes, generalRules, logReplicationRules, leaderElectionRules)
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Processing sent messages")
+      end
+      utils.ProcessSentMessages(nodeProperties)
+      -- Leader
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Executing leader flow")
+      end
+      if (nodeProperties.state == nodeStates.Leader) then
+        logReplicationRules.LeaderUpdateCommitIndex(nodeProperties)
+        logReplicationRules.SendAppendEntry(nodeProperties)
+      end
+      -- Candidate or Follower | Check if should start election
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Executing candidate or follower flow")
+      end
+      leaderElectionRules.StartElection(nodeProperties)
+      -- Wait 1 cycle and update node state
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port ..  "] Finished executing cycle " .. nodeProperties.heartbeat)
+      end
+      luarpc.wait(nodeProperties.heartbeatTimeout, nodeProperties.verbose)
+      generalRules.TickNodeClock(nodeProperties)
     end
-    print("[NODE ", port, "] lifecycle suspendend")
+    if (nodeProperties.verbose) then
+      print("[NODE ", nodeProperties.port, "] lifecycle suspendend")
+    end
   end
 }
 
-luarpc.createServant(nodeImpl, arq_interface, port)
-luarpc.waitIncoming()
+luarpc.createServant(nodeImpl, arq_interface, nodeProperties.port, nodeProperties.verbose)
+luarpc.waitIncoming(nodeProperties.verbose)

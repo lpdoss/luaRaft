@@ -4,6 +4,7 @@ local sckt = require("socket")
 
 local porta1 = 8000
 local porta2 = 8001
+local porta3 = 8002
 local arq_interface = arg[1]
 local test = tonumber(arg[2])
 
@@ -20,21 +21,19 @@ if test == 0 then -- server makes simple call like in our first RPC version
   p2.InitializeNode(5)
 
 elseif test == 1 then -- server calls itself
-  local r = p1.call_yourself(3, 7)
-  print("\n RES p1.call_yourself(3,7) = 3x10 + 7x7 =",r,"\n")
+  local p2 = luarpc.createProxy(IP, porta2, arq_interface)
+  p2.InitializeNode(5)
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 2 servers
 elseif test == 2 then -- server 8000 makes RPC call to port 8001
-  local r = p1.dummy(10)
-  print("\n RES p1.dummy(10) = ",r, "\n")
-
-  local r, s = p1.complex_foo(3, "alo", {nome = "ana", idade = 20, peso = 57.0}, 2)
-  print("\n RES p1.complex_foo = ",r, s, "\n")
+  local p2 = luarpc.createProxy(IP, porta2, arq_interface)
+  p2.InitializeNode(5)
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- 3 servers
-elseif test == 3 then -- server 8000 makes call to 8001 and 8001 makes call to 8002
-  local r = p1.dummy2(10)
-  print("\n RES p1.dummy2(10) = ",r)
+-- Raft Election Test
+elseif test == 3 then 
+  local p2 = luarpc.createProxy(IP, porta2, arq_interface)
+  p2.InitializeNode(5)
 
 elseif test == 4 then
   local r, s = p1.complex_foo(3, "alo", {nome = "ana", idade = 20, peso = 57.0}, 2)
