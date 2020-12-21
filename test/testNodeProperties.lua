@@ -8,6 +8,7 @@ local nodeProperties = {
   tick = 0,
   suspendNodeFlag = false,
   receivedMessagesLine = {},
-  sentMessagesLine = {}
+  sentMessagesLine = {},
+  verbose = true
 }
 return nodeProperties

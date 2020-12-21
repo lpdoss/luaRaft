@@ -68,18 +68,5 @@ function GeneralRules.SendAllEmptyHeartbeat(nodeProperties)
   end
 end
 
-function GeneralRules.SendEmptyHeartbeat(nodeProperties, clusterNode, clusterProxy)
-  if (nodeProperties.verbose) then
-    print("[NODE " .. nodeProperties.port .. "] Sending empty heartbeat to", clusterNode)
-  end
-  local prevLogIndex = nodeProperties.lastLogIndex - 1
-  local prevLogTerm = ""
-  if prevLogIndex >= 0 then prevLogTerm = nodeProperties.log[prevLogIndex].term end
-  local value = nodeProperties.term .. ";" .. prevLogIndex .. ";" .. prevLogTerm .. ";" .. nodeProperties.commitIndex .. ";;;"
-  utils.BuildAndSendMessage(nodeProperties.heartbeat, nodeProperties.port, clusterNode, "AppendEntries", value, clusterProxy)
-  if (nodeProperties.verbose) then
-    print("[NODE " .. nodeProperties.port .. "] Sent empty heartbeat to", clusterNode)
-  end
-end
 
 return GeneralRules

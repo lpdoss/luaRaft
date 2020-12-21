@@ -53,7 +53,7 @@ local messageTypes =
               type = "BroadcastMessage", 
               value = currentLevel .. ";" .. maxLevel
             }
-            resp = clusterProxy.SendMessage(fwdMessage)
+            resp = clusterProxy.ReceiveMessage(fwdMessage)
             if (resp ~= "Message Received") then
               print("[NODE " .. nodeProperties.port .. "] BroadcastMessage - Unable to forward to node ", clusterNode)
             else
@@ -72,7 +72,7 @@ local messageTypes =
       type = "BroadcastMessageResp", 
       value = "ok"
     }
-    resp = proxy.SendMessage(respMessage)
+    resp = proxy.ReceiveMessage(respMessage)
     if (resp ~= "Message Received") then
       print("[NODE " .. nodeProperties.port .. "] BroadcastMessage - couldn't send resp to ", message.fromNode)
     end
@@ -82,10 +82,10 @@ local messageTypes =
     print("[NODE " .. nodeProperties.port .. "] BroadcastMessageResp - broadcast to " .. message.fromNode .. " was successfully executed.")
     utils.removeSentMessage(nodeProperties, message)
   end,
-  TestTimeout = function(nodeProperties, message) {
+  TestTimeout = function(nodeProperties, message)
     print("[NODE " .. nodeProperties.port .. "] TestTimeout - enter")
     print("[NODE " .. nodeProperties.port .. "] TestTimeout - left")
-  }
+  end
 }
 
 return messageTypes

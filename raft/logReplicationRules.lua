@@ -40,16 +40,22 @@ function LogReplication.SendAppendEntry(nodeProperties)
   end
   for clusterNode,clusterProxy in pairs(nodeProperties.clusterNodesProxies) do
     local nodeNextLogEntryId = nodeProperties.nodeNextIndex[clusterNode]
+    local prevLogIndex = nodeNextLogEntryId - 1
+    local prevLogTerm = ""
+    if prevLogIndex >= 0 then prevLogTerm = nodeProperties.log[prevLogIndex].term end
+    -- New entry
     if (nodeProperties.lastLogIndex >= nodeNextLogEntryId) then
-      local prevLogIndex = nodeNextLogEntryId - 1
-      local prevLogTerm = ""
-      if prevLogIndex >= 0 then prevLogTerm = nodeProperties.log[prevLogIndex].term end
       local value = nodeProperties.term .. ";" .. prevLogIndex .. ";" .. prevLogTerm .. ";" .. nodeProperties.commitIndex .. ";" .. nodeProperties.log[nodeNextLogEntryId].term .. ";" .. nodeProperties.log[nodeNextLogEntryId].value .. ";" 
       print("=== AppendEntry NEW to", clusterNode, "===")
       print(value)
       utils.BuildAndSendMessage(nodeProperties.heartbeat, nodeProperties.port, clusterNode, "AppendEntries", value, clusterProxy)
+    -- Empty entry
     else
-      generalRules.SendEmptyHeartbeat(nodeProperties, clusterNode, clusterProxy)
+      if (nodeProperties.verbose) then
+        print("[NODE " .. nodeProperties.port .. "] Send empty heartbeat to", clusterNode)
+      end
+      local value = nodeProperties.term .. ";" .. prevLogIndex .. ";" .. prevLogTerm .. ";" .. nodeProperties.commitIndex .. ";;;"
+      utils.BuildAndSendMessage(nodeProperties.heartbeat, nodeProperties.port, clusterNode, "AppendEntries", value, clusterProxy)
     end
   end
   if (nodeProperties.verbose) then
@@ -226,9 +232,13 @@ end
     nodeProperties: the state of the caller node
     followerNode: id of the resp sender node
 ]]--
-function LogReplication.UpdateNodeSuccessfullAppend(nodeProperties, followerNode)
-  nodeProperties.nodeMatchIndex[followerNode] = nodeProperties.nodeNextIndex[followerNode] 
-  nodeProperties.nodeNextIndex[followerNode] = nodeProperties.nodeNextIndex[followerNode] + 1
+function LogReplication.UpdateNodeSuccessfullAppend(nodeProperties, followerNode, wasEmpty)
+  if (wasEmpty == "false") then
+    nodeProperties.nodeMatchIndex[followerNode] = nodeProperties.nodeNextIndex[followerNode] 
+    nodeProperties.nodeNextIndex[followerNode] = nodeProperties.nodeNextIndex[followerNode] + 1
+  else
+    nodeProperties.nodeMatchIndex[followerNode] = nodeProperties.nodeNextIndex[followerNode] - 1
+  end
 end
 
 return LogReplication

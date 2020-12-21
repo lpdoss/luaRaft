@@ -38,6 +38,7 @@ local messageTypes =
     end
     logReplicationRules.AcceptLeader(nodeProperties, leaderTerm, message.fromNode)
     logReplicationRules.FollowerUpdateCommitIndex(nodeProperties, leaderCommitIndex)
+    logReplicationRules.ClearDirtyEntries(nodeProperties, previousLogIndex, previousLogTerm, entryTerm)
     -- A3
     if (nodeProperties.verbose) then
       print("A3")
@@ -58,7 +59,6 @@ local messageTypes =
     if (nodeProperties.verbose) then
       print("A5")
     end
-    logReplicationRules.ClearDirtyEntries(nodeProperties, previousLogIndex, previousLogTerm, entryTerm)
     logReplicationRules.AddEntryToLog(nodeProperties, entryTerm, entryValue)
     -- A6
     if (nodeProperties.verbose) then
@@ -98,11 +98,6 @@ local messageTypes =
       print("AR2")
     end
     if (logReplicationRules.AcceptBiggerFollowerTerm(nodeProperties, followerTerm)) then return end
-    -- AR3
-    if (nodeProperties.verbose) then
-      print("AR3")
-    end
-    if (logReplicationRules.AppendRespIsEmpty(wasEmpty)) then return end
     -- AR4
     if (nodeProperties.verbose) then
       print("AR4")
@@ -115,7 +110,7 @@ local messageTypes =
     if (nodeProperties.verbose) then
       print("AR5")
     end
-    logReplicationRules.UpdateNodeSuccessfullAppend(nodeProperties, message.fromNode)
+    logReplicationRules.UpdateNodeSuccessfullAppend(nodeProperties, message.fromNode, wasEmpty)
     if (nodeProperties.verbose) then
       print("[NODE " .. nodeProperties.port .. "] AppendEntriesResp - left")
     end

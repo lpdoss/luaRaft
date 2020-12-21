@@ -1,9 +1,9 @@
 package.path = "../?.lua;" .. package.path
 local luarpc = require("luarpc")
 local utils = require("utils")
-local messageTypes = require("messageTypes")
-local nodeProperties = require("nodeProperties")
-local arq_interface = "interface.lua"
+local messageTypes = require("testmessageTypes")
+local nodeProperties = require("testNodeProperties")
+local arq_interface = "testInterface.lua"
 
 -- Initialize
 for i, value in ipairs(arg) do
@@ -26,7 +26,6 @@ local nodeImpl = {
     --
     messageStruct.timeout = nodeProperties.tick + 5
     local resp = proxy.ReceiveMessage(messageStruct)
-    print ("[NODE " .. nodeProperties.port .. "] Return message: " .. resp)
     if (resp ~= "Message Received") then
       print ("Couldn`t send message " .. messageStruct.type .. " to node " .. messageStruct.toNode)
       return 
@@ -37,10 +36,7 @@ local nodeImpl = {
   end,
   -- 
   ReceiveMessage = function (messageStruct)
-    print("[NODE " .. nodeProperties.port .. "] Message received:")
-    for k,v in pairs(messageStruct) do
-      print("[NODE " .. nodeProperties.port .. "] " .. k .. ": " .. v .. ".")
-    end
+    print("[NODE " .. nodeProperties.port .. "] Message received")
     local nodeProxy = nodeProperties.clusterNodesProxies[messageStruct.fromNode]
     if (nodeProxy == nil) then
       return "Calling node is not in the cluster."
@@ -71,11 +67,21 @@ local nodeImpl = {
     while true do
       print("[NODE " .. nodeProperties.port ..  "] Executing cycle " .. nodeProperties.tick)
       -- Check if there are any received messages to be treated
+      print("Processing received messages")
       while #nodeProperties.receivedMessagesLine > 0 do
         local messageToProcess = table.remove(nodeProperties.receivedMessagesLine, 1)
-        utils.processReceivedMessage(nodeProperties, messageTypes, messageToProcess)
+        print("[NODE " .. nodeProperties.port ..  "] Processing message")
+        for k,v in pairs(messageToProcess) do
+          print(k,v)
+        end
+        if (messageTypes[messageToProcess.type] ~= nil) then
+          messageTypes[messageToProcess.type](nodeProperties, messageToProcess)
+        end
+        print("[NODE " ..  nodeProperties.port ..  "] Processed message")
       end
+      print("Processed received messages")
       -- Check if there are any sent messages waiting a returning call
+      print("Processing sent messages")
       if nodeProperties.sentMessagesLine[nodeProperties.tick] ~= nil  then
         for _, nodeList in pairs(nodeProperties.sentMessagesLine[nodeProperties.tick]) do
           for _, message in ipairs(nodeList) do
@@ -83,10 +89,11 @@ local nodeImpl = {
           end
         end
       end
+      print("Processed sent messages")
       -- Increment server clock
       if nodeProperties.suspendNodeFlag then break end
       print("[NODE " .. nodeProperties.port ..  "] Finished executing cycle " .. nodeProperties.tick)
-      luarpc.wait(cycleTimeout)
+      luarpc.wait(cycleTimeout, false)
       nodeProperties.tick = nodeProperties.tick + 1
     end
     print("[NODE ", nodeProperties.port, "] lifecycle suspendend")
@@ -94,4 +101,4 @@ local nodeImpl = {
 }
 
 luarpc.createServant(nodeImpl, arq_interface, nodeProperties.port)
-luarpc.waitIncoming()
+luarpc.waitIncoming(false)
